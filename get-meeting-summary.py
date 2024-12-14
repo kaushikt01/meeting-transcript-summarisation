@@ -1,30 +1,20 @@
-import pdfplumber
 import spacy
+from sympy.physics.units import temperature
 
+# Step - 1: Read the content from the text file
+text_file_path = "meeting_transcript.txt"
 
-def extract_text_from_pdf(pdf_path):
-    with pdfplumber.open(pdf_path) as pdf:
-        full_text = ""
-        for page in pdf.pages:
-            full_text += page.extract_text()
-    return full_text
+# Open and read the content of the text file
+with open(text_file_path, "r", encoding="utf-8") as file:
+    transcript = file.read()
 
-# Replace with the path to your PDF file
-pdf_path = "Transcript_ Meeting on Meeting Scheduler Integration Feature.pdf"
-transcript = extract_text_from_pdf(pdf_path)
-
-# Print the first 500 characters to verify the extracted text
+# Print the first 500 characters to verify the content
 # print(transcript[:500])
 
-
-#Step - 1
-#---------------------------------------------------------------------------------
-
-
-
+# Step - 1
+# ---------------------------------------------------------------------------------
 
 # Load spaCy's English model
-
 nlp = spacy.load("en_core_web_sm")
 
 
@@ -44,11 +34,8 @@ cleaned_transcript = preprocess_text(transcript)
 # Print the cleaned transcript
 # print(cleaned_transcript[:500])
 
-
-#Step - 2
-#----------------------------------------------------------------
-
-
+# Step - 2
+# ----------------------------------------------------------------
 
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.summarizers.lsa import LsaSummarizer  # You can also use other summarizers like LsaSummarizer, LuhnSummarizer, etc.
@@ -74,22 +61,49 @@ ext_summary = extractive_summary(cleaned_transcript)
 # Print the summary
 # print(summary)
 
-#Step - 3
-#-----------------------------------------------------------------
-
+# Step - 3
+# -----------------------------------------------------------------
 
 import torch
 from transformers import pipeline
 
 device = 0 if torch.cuda.is_available() else -1
 print(device)
+
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn", device=device)
 
-# Generate summary
-abs_summary = summarizer(cleaned_transcript, max_length=500, min_length=40, do_sample=False)
-print("Abstractive Summary:\n", abs_summary)
+# Fix for token length issue - chunk the text into smaller parts
+def chunk_text(text, max_length=1024):
+    # Split the text into chunks that fit within the model's max token limit
+    chunks = []
+    while len(text) > max_length:
+        # Find the last full sentence within the max_length
+        chunk = text[:max_length]
+        last_period = chunk.rfind('.')
+        if last_period != -1:
+            chunk = chunk[:last_period + 1]
+        chunks.append(chunk)
+        text = text[len(chunk):]
+    if text:
+        chunks.append(text)
+    return chunks
 
-#Step - 4
+# Chunk the transcript
+chunks = chunk_text(cleaned_transcript)
+
+# Summarize each chunk
+summaries = []
+for chunk in chunks:
+    summary = summarizer(chunk, max_length=500, min_length=60, do_sample=False, top_k = 0.95
+                                                                        )
+    summaries.append(summary[0]['summary_text'])
+
+# Combine the summaries of each chunk into one final summary
+final_summary = " ".join(summaries)
+
+#print("Abstractive Summary:\n", abs_summary)
+
+# Step - 4
 # -------------------------------------------------------------------
 
 import spacy
@@ -115,21 +129,15 @@ def extract_keywords_text_rank(text):
 
 
 # Get keywords from TextRank
-keywords = extract_keywords_text_rank(abs_summary[0]["summary_text"])
+keywords = extract_keywords_text_rank(final_summary)
 
 # Print the extracted keywords
-print("Extracted Keywords using TextRank:")
-for keyword in keywords:
-    print(keyword)
+# print("Extracted Keywords using TextRank:")
+# for keyword in keywords:
+#     print(keyword)
 
-
-
-
-#Step - 5
-#-------------------------------------------------------------------------
-
-
-
+# Step - 5
+# -------------------------------------------------------------------------
 
 def generate_final_report(extractive_summary, abstractive_summary, keywords):
     # Format the extractive summary to include key points from the meeting
@@ -145,7 +153,7 @@ def generate_final_report(extractive_summary, abstractive_summary, keywords):
     return combined_summary
 
 # Example usage with your summaries and keywords:
-final_report = generate_final_report(ext_summary, abs_summary, keywords)
+final_report = generate_final_report(ext_summary, final_summary, keywords)
 
 # Print the final report
 print("Final Report:\n", final_report)

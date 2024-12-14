@@ -36,6 +36,16 @@ def extract_text_from_pdf(pdf_path):
     return full_text
 ```
 
+If the transcript is available in text format, import the file and read in transcript variable.
+
+```python
+text_file_path = "meeting_transcript.txt"
+
+# Open and read the content of the text file
+with open(text_file_path, "r", encoding="utf-8") as file:
+    transcript = file.read()
+```
+
 ### 2. Text Preprocessing
 
 The `preprocess_text` function uses spaCy to clean the extracted text, removing stopwords and punctuation.
