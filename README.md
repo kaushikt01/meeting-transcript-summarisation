@@ -1,179 +1,153 @@
+Here’s a **README.md** for your new RAG-based meeting summarizer.
+It’s written so anyone can run it from scratch, with clear install, usage, and configuration details.
 
-This project extracts, processes, and summarizes text from a PDF document containing a meeting transcript. It generates both extractive and abstractive summaries and provides keywords extracted from the text. The final report is formatted to highlight key points, detailed insights, and the most relevant keywords.
+---
 
-## Requirements
+````markdown
+# 📝 RAG-Based Meeting Summarizer
 
-- `pdfplumber`: To extract text from PDF files.
-- `spacy`: For natural language processing, tokenization, and preprocessing.
-- `sumy`: For extractive summarization using Latent Semantic Analysis (LSA).
-- `transformers`: For abstractive summarization using a pre-trained BART model.
-- `pytextrank`: For keyword extraction based on TextRank.
+A Python pipeline to **summarize meeting transcripts** using **Retrieval-Augmented Generation (RAG)** with:
+- **SentenceTransformers** for semantic embeddings
+- **FAISS** for fast vector similarity search
+- **Local LLM** (via LM Studio / OpenAI-compatible API) for high-quality summarization
+- **spaCy + PyTextRank** for keyword extraction
+- **Markdown-structured summaries** (Key Points, Detailed Insight, Keywords)
+- **Per-person summaries** with individual contributions
 
-You can install the required dependencies using the following command:
+---
+
+## 🚀 Features
+
+- **Full meeting summary** from large transcripts without token limit issues
+- **Per-speaker summaries** based on retrieved, semantically relevant chunks
+- **RAG approach**: retrieves only relevant transcript parts before sending to the LLM
+- **Configurable**: chunk size, top-k retrieval, LLM endpoint, temperature, etc.
+- **Local-first**: no cloud APIs required (works entirely offline if you have a local LLM)
+
+---
+
+## 📦 Installation
+
+### 1. Clone and enter the project
+```bash
+git clone https://github.com/yourusername/rag-meeting-summarizer.git
+cd rag-meeting-summarizer
+````
+
+### 2. Install dependencies
 
 ```bash
-pip install pdfplumber spacy sumy transformers pytextrank
-```
-
-Additionally, you'll need to download the spaCy model and tokenizer:
-
-```bash
+pip install -U pip setuptools wheel
+pip install spacy pytextrank sentence-transformers faiss-cpu requests tqdm transformers
 python -m spacy download en_core_web_sm
 ```
 
-## Functionality
+**Dependencies**
 
-### 1. Extract Text from PDF
+* [spaCy](https://spacy.io/) – NLP preprocessing
+* [pytextrank](https://github.com/DerwenAI/pytextrank) – keyword extraction
+* [sentence-transformers](https://www.sbert.net/) – embeddings
+* [FAISS](https://github.com/facebookresearch/faiss) – vector search
+* [transformers](https://huggingface.co/docs/transformers) – optional model loading
+* [requests](https://docs.python-requests.org/) – API calls to local LLM
+* [tqdm](https://tqdm.github.io/) – progress bars
 
-The function `extract_text_from_pdf` extracts the full text from a PDF file using `pdfplumber`.
+---
 
-```python
-def extract_text_from_pdf(pdf_path):
-    with pdfplumber.open(pdf_path) as pdf:
-        full_text = ""
-        for page in pdf.pages:
-            full_text += page.extract_text()
-    return full_text
-```
+## ⚙️ Configuration
 
-If the transcript is available in text format, import the file and read in transcript variable.
-
-```python
-text_file_path = "meeting_transcript.txt"
-
-# Open and read the content of the text file
-with open(text_file_path, "r", encoding="utf-8") as file:
-    transcript = file.read()
-```
-
-### 2. Text Preprocessing
-
-The `preprocess_text` function uses spaCy to clean the extracted text, removing stopwords and punctuation.
-
-**Alternative Models:**
-
-- **NLTK (Natural Language Toolkit)**: Another popular NLP library that can handle text preprocessing, including tokenization, stopword removal, and punctuation removal.
-- **Transformers Tokenizer**: You can use tokenizers from pre-trained models, like the BERT tokenizer, which are highly optimized for handling specific pre-trained models and can handle preprocessing tasks like sentence segmentation and tokenization.
-
-**Why spaCy is Better:**
-
-- **Ease of Use**: spaCy provides a very straightforward API and is designed for fast, efficient text processing.
-- **Integrated Pipeline**: spaCy's `en_core_web_sm` model already includes all the necessary preprocessing steps (tokenization, stopword removal, lemmatization), which makes it easy to integrate and highly efficient.
-- **Performance**: spaCy is optimized for production-level NLP tasks, providing high-speed processing that scales well with large datasets.
+Edit the **top section** of `rag_meeting_summary.py`:
 
 ```python
-def preprocess_text(text):
-    doc = nlp(text)
-    cleaned_text = " ".join([token.text for token in doc if not token.is_stop and not token.is_punct])
-    return cleaned_text
+TRANSCRIPT_PATH = "meeting_transcript.txt"    # Input file
+OUTPUT_SUMMARY = "Complete summary.txt"       # Final meeting summary
+CHUNK_SIZE = 400                              # Words per chunk
+CHUNK_OVERLAP = 50                            # Overlap between chunks
+EMBED_MODEL = "all-MiniLM-L6-v2"              # SentenceTransformer model
+TOP_K = 6                                     # Retrieved chunks for RAG
+
+LOCAL_LLM_BASE = "http://127.0.0.1:1234/v1"   # LM Studio API base URL
+LLM_MODEL = "gpt-4o-mini"                     # Model name loaded in LM Studio
 ```
 
-### 3. Extractive Summarization
+---
 
-The `extractive_summary` function generates a summary of the cleaned text using Latent Semantic Analysis (LSA) summarizer from the `sumy` library.
+## 📄 Input Format
 
-**Alternative Models:**
+The script expects **`meeting_transcript.txt`** in this format:
 
-- **LuhnSummarizer**: Another extractive summarizer available in the `sumy` library, which uses frequency-based techniques to select sentences for summarization.
-- **TextRankSummarizer**: An extractive summarizer that is based on the TextRank algorithm, similar to how Google's PageRank works for ranking web pages.
-
-**Why LSA Summarizer is Better:**
-
-- **Latent Semantic Analysis (LSA)** is a robust technique that can capture deeper semantic meanings in the text, making it more suited for handling complex documents such as meeting transcripts.
-- **Efficiency**: LSA is highly efficient at summarizing longer documents by focusing on the latent structures within the data, which often results in better summaries with fewer repetitive sentences.
-
-```python
-def extractive_summary(text):
-    parser = PlaintextParser.from_string(text, Tokenizer("english"))
-    summarizer = LsaSummarizer()
-    summary = summarizer(parser.document, 3)  # Adjust the number of sentences as needed
-    return ' '.join(str(sentence) for sentence in summary)
+```
+[00:00:05] Alice: "Hello everyone, let's start the meeting."
+[00:00:10] Bob: "Today we will discuss the project status."
+...
 ```
 
-### 4. Abstractive Summarization
+The regex pattern in the code extracts speaker names and messages automatically.
 
-An abstractive summary is generated using the pre-trained BART model from the `transformers` library.
+---
 
-**Alternative Models:**
+## ▶️ Usage
 
-- **GPT-3 or GPT-4 (OpenAI)**: These models are highly advanced and provide more natural language generation capabilities, but they require API access, which can be expensive.
-- **T5 (Text-to-Text Transfer Transformer)**: A transformer model by Google that works well for text-to-text tasks like summarization.
-- **BERTSUM**: A variation of BERT specifically fine-tuned for summarization tasks.
-
-**Why BART Model is Better:**
-
-- **Pretrained for Summarization**: The BART model is specifically pre-trained for sequence-to-sequence tasks like summarization, making it a natural fit for generating high-quality abstractive summaries.
-- **Balance between Abstraction and Fidelity**: BART produces summaries that strike a good balance between faithfully representing the original content and generating novel, meaningful text.
-- **State-of-the-Art**: BART is one of the best models for summarization, often achieving strong performance on multiple benchmarks.
-
-```python
-summarizer = pipeline("summarization", model="facebook/bart-large-cnn", device=device)
-abs_summary = summarizer(cleaned_transcript, max_length=500, min_length=40, do_sample=False)
-```
-
-### 5. Keyword Extraction using TextRank
-
-Keywords are extracted from the abstractive summary using the `pytextrank` library.
-
-**Alternative Models:**
-
-- **TF-IDF (Term Frequency-Inverse Document Frequency)**: A simple, effective method for keyword extraction based on word frequency.
-- **RAKE (Rapid Automatic Keyword Extraction)**: Another keyword extraction technique that is more rule-based compared to TextRank.
-
-**Why TextRank is Better:**
-
-- **Graph-Based**: TextRank, like Google's PageRank algorithm, is graph-based, considering the relationships between words and phrases, leading to more coherent and meaningful keyword extraction.
-- **Efficiency**: TextRank automatically extracts relevant keywords and phrases from the entire document, whereas TF-IDF can sometimes miss key concepts that appear less frequently but are still important.
-
-```python
-def extract_keywords_text_rank(text):
-    doc = nlp(text)
-    keywords = [phrase.text for phrase in doc._.phrases]
-    return keywords
-```
-
-### 6. Generate Final Report
-
-The `generate_final_report` function formats the extractive and abstractive summaries, along with the keywords, into a structured report.
-
-```python
-def generate_final_report(extractive_summary, abstractive_summary, keywords):
-    formatted_extractive = "\n".join([f"- {point}" for point in extractive_summary.split(". ") if point])
-    combined_summary = f"### Key Points from the Meeting:\n{formatted_extractive}\n\n" \
-                       f"### Detailed Insight:\n{abstractive_summary}\n\n" \
-                       f"### Keywords:\n" + ", ".join(keywords) + "\n\n" \
-                       f"### Conclusion:\n" \
-                       f"Based on the discussion, the key topics are highlighted above. Further actions can be taken accordingly."
-    return combined_summary
-```
-
-## Example Usage
-
-To use the program, follow these steps:
-
-1. Replace the `pdf_path` with the path to your own PDF document.
-2. Run the script to extract text, preprocess it, generate summaries, and extract keywords.
-3. The final report will be printed with key points, detailed insights, and keywords.
-
-### Example Output:
+1. Make sure your **local LLM server is running** (LM Studio / Ollama / etc.) and listening on `LOCAL_LLM_BASE`.
+2. Place your transcript in `meeting_transcript.txt`.
+3. Run:
 
 ```bash
-
-Final Report:
-### Key Points from the Meeting:
-- Key point 1
-- Key point 2
-
-### Detailed Insight:
-This is the detailed summary generated by the BART model.
-
-### Keywords:
-Meeting Scheduler, Integration, Feature
-
-### Conclusion:
-Based on the discussion, the key topics are highlighted above. Further actions can be taken accordingly.
+python rag_meeting_summary.py
 ```
 
-## Conclusion
+---
 
-This script helps in efficiently processing and summarizing meeting transcripts from PDF files. It combines extractive and abstractive summarization techniques with keyword extraction to create a comprehensive report.
+## 📤 Output
+
+* **Complete summary**: `Complete summary.txt`
+  Markdown format with:
+
+  * Key Points (bullet list)
+  * Detailed Insight (paragraphs)
+  * Keywords (comma-separated)
+
+* **Per-speaker summaries**:
+  Each speaker gets a `{SpeakerName}.txt` file.
+
+Example:
+
+```
+Complete summary.txt
+Alice.txt
+Bob.txt
+```
+
+---
+
+## 🔧 How It Works
+
+1. **Preprocessing**:
+
+   * Lemmatization
+   * Stopword removal
+   * Punctuation filtering
+
+2. **Chunking**: Splits transcript into overlapping word chunks.
+
+3. **Embedding**: Converts chunks into vector representations with `sentence-transformers`.
+
+4. **Indexing**: Stores embeddings in a FAISS index for fast similarity search.
+
+5. **Retrieval**: Selects top-k most relevant chunks for the summarization query.
+
+6. **LLM Summarization**: Sends retrieved context to your **local LLM** for generation.
+
+7. **Keyword Extraction**: Optionally extract keywords from summaries with PyTextRank.
+
+---
+
+## 📚 References
+
+* [SentenceTransformers Docs](https://www.sbert.net/docs/)
+* [FAISS GitHub](https://github.com/facebookresearch/faiss)
+* [spaCy Docs](https://spacy.io/usage)
+* [PyTextRank GitHub](https://github.com/DerwenAI/pytextrank)
+* [LM Studio Docs](https://lmstudio.ai/docs)
+
+---
